@@ -4,7 +4,7 @@ import { PlayerManager } from '../player/PlayerManager';
 /**
  * 迷你播放条（常驻底部导航上方）
  * 绑定 AppStorage：currentTitle / currentArtist / isPlaying
- * 图标使用系统 Symbol 符号字体，与 HarmonyOS 系统风格一致
+ * 点击条身展开播放页；图标为系统 Symbol 符号
  */
 @Component
 export struct MiniPlayer {
@@ -34,8 +34,11 @@ export struct MiniPlayer {
       }
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start)
+      .onClick(() => {
+        AppStorage.setOrCreate('nowPlayingVisible', true);
+      })
 
-      // 播放/暂停（Symbol 线性风格）
+      // 播放/暂停（Symbol 符号）
       if (this.isPlaying) {
         SymbolGlyph($r('sys.symbol.pause_fill'))
           .fontSize(22)
@@ -67,5 +70,8 @@ export struct MiniPlayer {
     .padding(10)
     .borderRadius(20)
     .backgroundColor(ZephyrTheme.surfaceGlass)
+    .onClick(() => {
+      AppStorage.setOrCreate('nowPlayingVisible', true);
+    })
   }
 }

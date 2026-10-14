@@ -9,6 +9,14 @@ interface PlayableItem {
   uri: string;
 }
 
+/** 播放顺序：顺序 / 列表循环 / 单曲循环 / 随机（单按钮多状态，见原型控制区规范） */
+export enum PlayMode {
+  SEQUENTIAL = 0,
+  LOOP = 1,
+  ONE = 2,
+  RANDOM = 3
+}
+
 /**
  * 播放内核管理器（MVP：AVPlayer 播放本地文件）
  * - 文件访问：fileIo.openSync 打开 picker 授权 uri 取 fd，以 fdSrc（fd+offset+length）交给 AVPlayer
@@ -23,11 +31,16 @@ export class PlayerManager {
   private queue: PlayableItem[] = [];
   private index: number = -1;
   private playToken: number = 0;
+  private playMode: PlayMode = PlayMode.LOOP;
+  private progressTimer: number = -1;
 
   private constructor() {
     AppStorage.setOrCreate('currentTitle', '未在播放');
     AppStorage.setOrCreate('currentArtist', '导入本地音乐后开始');
     AppStorage.setOrCreate('isPlaying', false);
+    AppStorage.setOrCreate('playMode', this.playMode);
+    AppStorage.setOrCreate('positionMs', 0);
+    AppStorage.setOrCreate('durationMs', 0);
   }
 
   static getInstance(): PlayerManager {
@@ -98,14 +111,34 @@ export class PlayerManager {
     }
   }
 
-  /** 下一曲（循环队列，跳过无文件项） */
+  /** 下一曲（按播放顺序策略，跳过无文件项） */
   next(): void {
     if (this.queue.length === 0) {
       return;
     }
+    if (this.playMode === PlayMode.ONE) {
+      // 单曲循环：重播当前曲目
+      this.playIndex(this.index);
+      return;
+    }
+    if (this.playMode === PlayMode.RANDOM && this.queue.length > 1) {
+      // 随机：在非当前曲目中随机挑一首有文件的
+      for (let n = 0; n < this.queue.length * 2; n++) {
+        const r: number = Math.floor(Math.random() * this.queue.length);
+        if (r !== this.index && this.queue[r].uri.length > 0) {
+          this.playIndex(r);
+          return;
+        }
+      }
+    }
     let idx: number = this.index + 1;
     for (let n = 0; n < this.queue.length; n++) {
       if (idx >= this.queue.length) {
+        if (this.playMode === PlayMode.SEQUENTIAL) {
+          // 顺序播放到队尾即停
+          AppStorage.setOrCreate('isPlaying', false);
+          return;
+        }
         idx = 0;
       }
       if (this.queue[idx].uri.length > 0) {
@@ -114,6 +147,65 @@ export class PlayerManager {
       }
       idx++;
     }
+  }
+
+  /** 上一曲 */
+  previous(): void {
+    if (this.queue.length === 0) {
+      return;
+    }
+    let idx: number = this.index - 1;
+    for (let n = 0; n < this.queue.length; n++) {
+      if (idx < 0) {
+        idx = this.queue.length - 1;
+      }
+      if (this.queue[idx].uri.length > 0) {
+        this.playIndex(idx);
+        return;
+      }
+      idx--;
+    }
+  }
+
+  /** 播放顺序循环切换：顺序 → 列表循环 → 单曲循环 → 随机 */
+  cyclePlayMode(): void {
+    const next: PlayMode = (this.playMode + 1) % 4;
+    this.setPlayMode(next);
+  }
+
+  setPlayMode(mode: PlayMode): void {
+    this.playMode = mode;
+    AppStorage.setOrCreate('playMode', mode);
+  }
+
+  getPlayMode(): PlayMode {
+    return this.playMode;
+  }
+
+  /** 跳转到指定进度（毫秒） */
+  seek(ms: number): void {
+    if (this.player === null) {
+      return;
+    }
+    try {
+      this.player.seek(Math.max(0, ms));
+    } catch (e) {
+      const err = e as BusinessError;
+      console.error(`[Zephyr] seek failed: ${err.code} ${err.message}`);
+    }
+  }
+
+  /** 获取当前队列（供队列页渲染；返回歌曲信息数组） */
+  getQueueSongs(): SongInfo[] {
+    const songs: SongInfo[] = [];
+    for (let i = 0; i < this.queue.length; i++) {
+      songs.push(this.queue[i].song);
+    }
+    return songs;
+  }
+
+  getCurrentIndex(): number {
+    return this.index;
   }
 
   private start(uri: string): void {
@@ -154,15 +246,19 @@ export class PlayerManager {
             console.error(`[Zephyr] prepare failed: ${e.code} ${e.message}`);
           });
         } else if (state === 'prepared') {
+          AppStorage.setOrCreate('durationMs', player.duration);
           player.play().catch((e: BusinessError) => {
             console.error(`[Zephyr] first play failed: ${e.code} ${e.message}`);
           });
         } else if (state === 'playing') {
           AppStorage.setOrCreate('isPlaying', true);
+          this.startProgressTimer();
         } else if (state === 'paused') {
           AppStorage.setOrCreate('isPlaying', false);
+          this.stopProgressTimer();
         } else if (state === 'completed') {
           AppStorage.setOrCreate('isPlaying', false);
+          this.stopProgressTimer();
           this.next();
         } else if (state === 'error') {
           AppStorage.setOrCreate('isPlaying', false);
@@ -197,6 +293,26 @@ export class PlayerManager {
       }
       this.file = null;
     }
+    this.stopProgressTimer();
     AppStorage.setOrCreate('isPlaying', false);
+  }
+
+  /** 进度上报：500ms 周期把 position 写入 AppStorage（进度条/歌词联动） */
+  private startProgressTimer(): void {
+    if (this.progressTimer >= 0) {
+      return;
+    }
+    this.progressTimer = setInterval(() => {
+      if (this.player !== null) {
+        AppStorage.setOrCreate('positionMs', this.player.currentTime);
+      }
+    }, 500);
+  }
+
+  private stopProgressTimer(): void {
+    if (this.progressTimer >= 0) {
+      clearInterval(this.progressTimer);
+      this.progressTimer = -1;
+    }
   }
 }
