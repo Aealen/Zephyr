@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "Zephyr 主模块：本地音乐播放器"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "Zephyr · 优雅、音质优先的本地音乐播放器"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "Zephyr"
+    }
+  ]
+}

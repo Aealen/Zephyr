@@ -1,0 +1,25 @@
+/node_modules
+/oh_modules
+/local.properties
+/.idea
+**/.ds_store
+**/.gitkeep
+/build
+/.hvigor
+/caches
+/coverage
+**/build
+**/.hvigor
+**/oh_modules
+/.clangd
+/.clang-format
+/.clang-tidy
+**/.test
+/.appanalyzer
+
+# 本机工具产物
+.codegraph/
+.v2c/
+.video_agent/
+build-log.txt
+design/device-check/

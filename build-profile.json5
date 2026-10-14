@@ -1,0 +1,50 @@
+{
+  "app": {
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "C:\\Users\\15927\\.ohos\\config\\default_Zephyr_iFXd5fcro2YWQw1lWxdEcOwwVmDRJI_WM53bPhg3yWA=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001B4DDE43F6EE4EAB72E33B3EAF639072693C96D4EE5AE5A0F62EE7E82F3C7B727FA5E8662D49FDD6",
+          "profile": "C:\\Users\\15927\\.ohos\\config\\default_Zephyr_iFXd5fcro2YWQw1lWxdEcOwwVmDRJI_WM53bPhg3yWA=.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "C:\\Users\\15927\\.ohos\\config\\default_Zephyr_iFXd5fcro2YWQw1lWxdEcOwwVmDRJI_WM53bPhg3yWA=.p12",
+          "storePassword": "0000001B14F2E0BABE90198A9980FFB12769AFF3C3A69C8AB2A6B12905DED550464BB8744B4DEA5DDFF9A6"
+        }
+      }
+    ],
+    "products": [
+      {
+        "name": "default",
+        "signingConfig": "default",
+        "compatibleSdkVersion": "5.0.0(12)",
+        "targetSdkVersion": "5.0.0(12)",
+        "runtimeOS": "HarmonyOS"
+      }
+    ],
+    "buildModeSet": [
+      {
+        "name": "debug",
+      },
+      {
+        "name": "release"
+      }
+    ]
+  },
+  "modules": [
+    {
+      "name": "entry",
+      "srcPath": "./entry",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": [
+            "default"
+          ]
+        }
+      ]
+    }
+  ]
+}

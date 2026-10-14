@@ -1,0 +1,8 @@
+{
+  "modelVersion": "5.0.0",
+  "description": "Zephyr · HarmonyOS 原生本地音乐播放器（优雅、交互优秀、音质、性能优先）",
+  "dependencies": {
+  },
+  "devDependencies": {
+  }
+}
