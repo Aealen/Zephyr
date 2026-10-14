@@ -1,32 +1,36 @@
 import { ZephyrTheme } from '../../theme/ZephyrTheme';
 import { SongInfo, formatDuration } from '../../model/SongInfo';
 import { PlayerManager } from '../../player/PlayerManager';
+import { LibraryStore } from '../../model/LibraryStore';
 import { picker } from '@kit.CoreFileKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 
-/** 资料库：本地音乐导入（文件选择器）+ 歌曲列表 */
+/** 资料库：本地音乐导入（音频选择器，批量追加）+ 持久化曲库列表 */
 @Component
 export struct LibraryPage {
   @StorageLink('librarySongs') songs: SongInfo[] = [];
+  @StorageLink('libraryUris') uris: string[] = [];
   private tabs: string[] = ['歌曲', '专辑', '歌单', '艺人'];
 
-  /** 打开系统文件选择器导入本地音频 */
+  /** 打开系统音频选择器，批量追加到曲库并持久化 */
   private pickMusic(): void {
-    const docPicker = new picker.DocumentViewPicker();
-    const options = new picker.DocumentSelectOptions();
-    options.maxSelectNumber = 200;
-    options.fileSuffixFilters = ['音频|.mp3,.flac,.wav,.aac,.m4a,.ogg,.wma,.ape'];
-    docPicker.select(options).then((uris: string[]) => {
+    const audioPicker = new picker.AudioViewPicker();
+    const options = new picker.AudioSelectOptions();
+    audioPicker.select(options).then(async (uris: string[]) => {
       if (uris.length === 0) {
         return;
       }
-      const songs: SongInfo[] = [];
+      const startIndex: number = this.songs.length;
       for (let i = 0; i < uris.length; i++) {
-        songs.push(this.parseFromUri(uris[i], i));
+        this.songs.push(this.parseFromUri(uris[i], startIndex + i));
+        this.uris.push(uris[i]);
       }
-      PlayerManager.getInstance().setQueue(songs, uris);
-      this.songs = songs;
-      PlayerManager.getInstance().playIndex(0);
+      // 首次导入：设队列；已有队列：追加后若未在播则游标保持
+      if (PlayerManager.getInstance().getQueueSize() === 0) {
+        PlayerManager.getInstance().setQueue(this.songs, this.uris);
+        PlayerManager.getInstance().playIndex(startIndex);
+      }
+      await LibraryStore.saveLibrary(this.songs, this.uris);
     }).catch((err: BusinessError) => {
       console.error(`[Zephyr] pick failed: ${err.code} ${err.message}`);
     });

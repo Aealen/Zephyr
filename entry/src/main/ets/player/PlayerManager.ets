@@ -2,6 +2,7 @@ import { media } from '@kit.MediaKit';
 import { fileIo as fs } from '@kit.CoreFileKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { SongInfo } from '../model/SongInfo';
+import { PlayMode } from '../model/PlayMode';
 
 /** 队列条目：歌曲信息 + 关联的本地文件 uri（空串表示未关联文件，仅演示数据） */
 interface PlayableItem {
@@ -9,19 +10,11 @@ interface PlayableItem {
   uri: string;
 }
 
-/** 播放顺序：顺序 / 列表循环 / 单曲循环 / 随机（单按钮多状态，见原型控制区规范） */
-export enum PlayMode {
-  SEQUENTIAL = 0,
-  LOOP = 1,
-  ONE = 2,
-  RANDOM = 3
-}
-
 /**
  * 播放内核管理器（MVP：AVPlayer 播放本地文件）
  * - 文件访问：fileIo.openSync 打开 picker 授权 uri 取 fd，以 fdSrc（fd+offset+length）交给 AVPlayer
  *   （AVPlayer 的 url 仅支持 fd:///http(s)，不支持 file:// uri，见 @ohos.multimedia.media.d.ts）
- * - 状态经 AppStorage 与 UI 双向绑定：currentTitle / currentArtist / isPlaying
+ * - 状态经 AppStorage 与 UI 双向绑定：currentTitle / currentArtist / isPlaying / positionMs / durationMs / playMode
  * 后续音质阶段将替换为 OHAudio 回调管线 + IEffectChain，UI 绑定不变
  */
 export class PlayerManager {
@@ -33,6 +26,7 @@ export class PlayerManager {
   private playToken: number = 0;
   private playMode: PlayMode = PlayMode.LOOP;
   private progressTimer: number = -1;
+  private onQueueChanged: (() => void) | null = null;
 
   private constructor() {
     AppStorage.setOrCreate('currentTitle', '未在播放');
@@ -50,6 +44,11 @@ export class PlayerManager {
     return PlayerManager.instance;
   }
 
+  /** 队列变化回调（队列页注册，切歌时刷新高亮） */
+  setQueueChangedListener(listener: () => void): void {
+    this.onQueueChanged = listener;
+  }
+
   /** 设置播放队列（导入的本地音乐） */
   setQueue(songs: SongInfo[], uris: string[]): void {
     this.queue = [];
@@ -59,6 +58,9 @@ export class PlayerManager {
       this.queue.push(item);
     }
     this.index = this.queue.length > 0 ? 0 : -1;
+    if (this.onQueueChanged !== null) {
+      this.onQueueChanged();
+    }
   }
 
   getQueueSize(): number {
@@ -79,6 +81,9 @@ export class PlayerManager {
     AppStorage.setOrCreate('currentTitle', item.song.title);
     AppStorage.setOrCreate('currentArtist', item.song.artist);
     this.start(item.uri);
+    if (this.onQueueChanged !== null) {
+      this.onQueueChanged();
+    }
   }
 
   /** 按歌名播放（首页"继续播放"卡片） */
@@ -207,6 +212,8 @@ export class PlayerManager {
   getCurrentIndex(): number {
     return this.index;
   }
+
+  /** 歌词伴随播放：由播放页根据当前曲目读取同名 .lrc（后续接入 LyricRepository） */
 
   private start(uri: string): void {
     this.releasePlayer();

@@ -1,7 +1,11 @@
 import { ZephyrTheme } from '../../theme/ZephyrTheme';
-import { PlayerManager, PlayMode } from '../../player/PlayerManager';
+import { PlayerManager } from '../../player/PlayerManager';
+import { PlayMode } from '../../model/PlayMode';
 import { LyricLine, sampleLyrics } from '../../model/LyricLine';
+import { LrcParser } from '../../model/LrcParser';
 import { LyricsView } from './LyricsView';
+import { fileIo as fs } from '@kit.CoreFileKit';
+import { BusinessError } from '@kit.BasicServicesKit';
 
 /** 格式化毫秒为 m:ss */
 function fmt(ms: number): string {
@@ -25,9 +29,45 @@ export struct NowPlayingPage {
   @StorageLink('playMode') playMode: PlayMode = PlayMode.LOOP;
   @State showLyrics: boolean = false;
   @State dragRatio: number = -1;
+  @State lrcLines: LyricLine[] = [];
+  @State hasLrc: boolean = false;
   private player: PlayerManager = PlayerManager.getInstance();
-  private lyrics: LyricLine[] = sampleLyrics();
+  private fallbackLyrics: LyricLine[] = sampleLyrics();
   private barWidthVp: number = 0;
+
+  aboutToAppear(): void {
+    this.loadLyrics();
+  }
+
+  /** 尝试读取当前曲目的同名 .lrc（音频 uri 去扩展名 + .lrc）；失败回退示例歌词 */
+  private loadLyrics(): void {
+    const uris: string[] = AppStorage.get<string[]>('libraryUris') ?? [];
+    const index: number = this.player.getCurrentIndex();
+    this.hasLrc = false;
+    this.lrcLines = [];
+    if (index < 0 || index >= uris.length) {
+      return;
+    }
+    const lrcUri: string = uris[index].replace(/\.[a-zA-Z0-9]+$/, '.lrc');
+    try {
+      const file = fs.openSync(lrcUri, fs.OpenMode.READ_ONLY);
+      const stat = fs.statSync(file.fd);
+      const buf = new ArrayBuffer(stat.size);
+      fs.readSync(file.fd, buf);
+      fs.closeSync(file);
+      const content: string = String.fromCharCode(...new Uint8Array(buf));
+      const parsed: LyricLine[] = LrcParser.parse(content);
+      if (parsed.length > 0) {
+        this.lrcLines = parsed;
+        this.hasLrc = true;
+        console.info(`[Zephyr] lrc loaded: ${parsed.length} lines`);
+        return;
+      }
+    } catch (e) {
+      const err = e as BusinessError;
+      console.info(`[Zephyr] no lrc for current track (${err.code})`);
+    }
+  }
 
   /** 进度比例（拖动中优先取拖动值） */
   private progress(): number {
@@ -40,13 +80,20 @@ export struct NowPlayingPage {
     return Math.min(1, this.positionMs / this.durationMs);
   }
 
-  /** 无时间戳歌词的伪当前行：按播放比例映射到行索引（LRC 接入后换时间戳驱动） */
+  /** 歌词当前行：有 LRC 用二分定位，无 LRC 按播放比例映射示例歌词 */
   private lyricIndex(): number {
+    if (this.hasLrc) {
+      return LrcParser.currentIndex(this.lrcLines, this.positionMs);
+    }
     if (this.durationMs <= 0 || !this.isPlaying) {
       return -1;
     }
-    const idx: number = Math.floor(this.progress() * this.lyrics.length);
-    return Math.min(this.lyrics.length - 1, Math.max(0, idx));
+    const idx: number = Math.floor(this.progress() * this.fallbackLyrics.length);
+    return Math.min(this.fallbackLyrics.length - 1, Math.max(0, idx));
+  }
+
+  private activeLyrics(): LyricLine[] {
+    return this.hasLrc ? this.lrcLines : this.fallbackLyrics;
   }
 
   /** 播放顺序图标随状态切换（单按钮多状态） */
@@ -227,7 +274,7 @@ export struct NowPlayingPage {
       } else {
         // ===== 歌词模式 =====
         Column() {
-          LyricsView({ lyrics: this.lyrics, currentIndex: this.lyricIndex() })
+          LyricsView({ lyrics: this.activeLyrics(), currentIndex: this.lyricIndex() })
         }
         .layoutWeight(1)
         .width('100%')
